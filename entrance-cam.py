@@ -20,8 +20,10 @@ from http import server
 from threading import Condition
 
 # Import / Camera
+import cv2
+
 from picamera2 import Picamera2#, Preview
-from picamera2.encoders import JpegEncoder#, H264Encoder, Quality
+from picamera2.encoders import JpegEncoder, H264Encoder, Quality
 from picamera2.outputs import FileOutput
 
 # HTML page for the MJPEG streaming demo
@@ -54,17 +56,31 @@ Step_Display = 			0
 
 # Parameters / Debugging and testing
 flag_streaming = 		False # 0 = preview, 1 = vlc stream
-FLAG_PRINT_ONCE = 			True
 FLAG_PRINT_ONCE_CAM		=	True
 FLAG_PRINT_ONCE_DISPLAY	=	True
 
-#input
-# output
+# Initialize Inputs/Outputs
+# input
 dummy = Button(Dummy_PIN, pull_up=False, bounce_time=0.2)
 pir_outdoor = Button(PIR_Outdoor_PIN, pull_up=False, bounce_time=0.2)
 pir_indoor = Button(PIR_Indoor_PIN, pull_up=False, bounce_time=0.2)
 button = Button(BUTTON_PIN, pull_up=False, bounce_time=0.2)
+# output
 display = Button(DISPLAY_PIN, pull_up=False, bounce_time=0.2) # not necessary if KNX is used!
+
+# =============================================================================
+# Camera setup
+# =============================================================================
+# Settings for image recording
+cam = cv2.VideoCapture(0)
+cam.set(3,640) # set Width
+cam.set(4,480) # set Height       
+cv2.namedWindow("camera")
+
+ret, frame = cam.read()
+if not ret:
+    print("failed to grab frame")
+cv2.imshow("camera", frame)
 
 # Camera setup
 '''
