@@ -73,6 +73,33 @@ display = Button(DISPLAY_PIN, pull_up=False, bounce_time=0.2) # not necessary if
 # =============================================================================
 # Camera setup
 # =============================================================================
+#cam = cv2.VideoCapture(0)
+#cam.set(3,640) # set Width
+#cam.set(4,480) # set Height       
+#cv2.namedWindow("camera")
+
+'''
+CONTINUE HERE: CAM <------------------------------------------------------------------------------------------------###
+cap = cv2.VideoCapture(0)
+if not cap.isOpened():
+    print("Cannot open camera")
+    exit()
+while True:
+    # Capture frame-by-frame
+    ret, frame = cap.read()
+ 
+    # if frame is read correctly ret is True
+    if not ret:
+        print("Can't receive frame (stream end?). Exiting ...")
+        break
+    # Our operations on the frame come here
+    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+    # Display the resulting frame
+    cv2.imshow('frame', gray)
+    if cv2.waitKey(1) == ord('q'):
+        break
+'''
+'''
 # Settings for image recording
 if USB_CAMERA:
 	cam = cv2.VideoCapture(0)
@@ -93,7 +120,7 @@ else:
 	output_path = "/home/pi/Desktop/"
 	output = ".h264"
 	REC_TIME = 30
-
+'''
 '''
 # Class to handle streaming output
 class StreamingOutput(io.BufferedIOBase):
@@ -231,8 +258,16 @@ def time_delta(elapsed_time, dT=60):
 	delta_t = current_time - elapsed_time
 	#print("c", current_time, "seconds")
 	#print("e", elapsed_time, "seconds")
-	print("...", round(delta_t, 1), "seconds.")
+	print("... dT =", round(delta_t, 1), "seconds.")
 	return True if delta_t > dT else False
+
+def time_delta_abs(elapsed_time, dT=60):
+	current_time = time.time()
+	delta_t = current_time - elapsed_time
+	#print("c", current_time, "seconds")
+	#print("e", elapsed_time, "seconds")
+	print("... dT =", round(delta_t, 1), "seconds.")
+	return delta_t > dT
 
 # Callbacks
 # Callbacks / CAM
@@ -243,9 +278,13 @@ def increment_pir_outdoor(null):
 		Step_Cam += 1
 		FLAG_PRINT_ONCE_CAM = True
 	elif Step_Cam == 2:
-		if time_delta(elapsed_time_pir_outside, 3):
+		delta_t = time.time() - elapsed_time_pir_outside
+		if delta_t < 3:
 			Step_Cam += 1
 			FLAG_PRINT_ONCE_CAM = True
+		else:
+			# Reset step because not 3 detections in 3 seconds
+			Step_Cam = 0
 	# We want 3 detections in e.g. 3 seconds to turn on video
 	# Get and save the time to compare with
 	if Step_Cam == 0:
@@ -306,16 +345,11 @@ def main():
 		
 		# cam outdoor & display indoor
 		while True:
-			time.sleep(1)
+			time.sleep(0.5)
 		
-			if USB_CAMERA:
-				ret, frame = cam.read()
-				if not ret:
-					print("failed to grab frame")
-				cv2.imshow("camera", frame)
-				k = cv2.waitKey(1)
-				if k != -1:
-					break
+			#if USB_CAMERA:
+			#	ret, frame = cam.read()
+			#	cv2.imshow("camera", frame)
 
 			# CAMERA
 			if Step_Cam == 0:
@@ -359,8 +393,14 @@ def main():
 		print("Abort!")
 	finally:
 		print("finished!")
-		#GPIO.cleanup()
-		#picam2.stop_recording()
+		'''
+		if USB_CAMERA:
+			cv2.imwrite('/home/pi/Desktop/testimage.jpg', image)
+			cam.release()
+			cv2.destroyAllWindows()
+		else:
+			picam2.stop_recording()
+			'''
 
 if __name__ == "__main__":
 	main()
