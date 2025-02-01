@@ -8,8 +8,9 @@ import time
 import datetime
 import socket
 
-# Import / GPIO
-import RPi.GPIO as GPIO
+# Import / GPIO PINs
+import gpiozero as GPIO
+from gpiozero import Button, LED
 
 # Streaming 
 import io
@@ -38,34 +39,32 @@ PAGE = """\
 
 # Parameters
 # Parameters / Inputs	Physical#
-Dummy = 		17			# 6
-PIR_Outdoor = 	27			# 7
-PIR_Indoor = 	22			# 8
-
-IN_BUTTON = 	23			# 8
-
+Dummy_PIN = 			17		# 6
+PIR_Outdoor_PIN = 		27		# 7
+PIR_Indoor_PIN = 		22		# 8
+BUTTON_PIN = 			23		# 8
 # Parameters / Outputs
-OUT_DISPLAY = 	24			# 9
+DISPLAY_PIN = 			24		# 9 # not necessary if KNX is used!
 
 # Parameters / Flags
-Video = False
-Display = False
-Step_Cam = 0
-Step_Display = 0
+Video = 				False
+Display = 				False
+Step_Cam = 				0
+Step_Display = 			0
 
 # Parameters / Debugging and testing
 flag_streaming = 		False # 0 = preview, 1 = vlc stream
-PRINT_ONCE = 			True
-#PRINT_ONCE_Cam = 		True
-#PRINT_ONCE_Display = 	True
+FLAG_PRINT_ONCE = 			True
+FLAG_PRINT_ONCE_CAM		=	True
+FLAG_PRINT_ONCE_DISPLAY	=	True
 
-# GPIO setup
-GPIO.setmode(GPIO.BCM)     					# set up BCM GPIO numbering  
-GPIO.setup(IN_BUTTON, GPIO.IN)
-#GPIO.setup(PIR_OutdoorNear, GPIO.IN)		# Jumper for 1 s triggers
-GPIO.setup(PIR_Outdoor, GPIO.IN)  
-GPIO.setup(PIR_Indoor, GPIO.IN)
-GPIO.setup(OUT_DISPLAY, GPIO.OUT) 
+#input
+# output
+dummy = Button(Dummy_PIN, pull_up=False, bounce_time=0.2)
+pir_outdoor = Button(PIR_Outdoor_PIN, pull_up=False, bounce_time=0.2)
+pir_indoor = Button(PIR_Indoor_PIN, pull_up=False, bounce_time=0.2)
+button = Button(BUTTON_PIN, pull_up=False, bounce_time=0.2)
+display = Button(DISPLAY_PIN, pull_up=False, bounce_time=0.2) # not necessary if KNX is used!
 
 # Camera setup
 '''
@@ -83,6 +82,7 @@ output = ".h264"
 REC_TIME = 30
 '''
 
+'''
 # Class to handle streaming output
 class StreamingOutput(io.BufferedIOBase):
     def __init__(self):
@@ -156,6 +156,7 @@ picam2.start_recording(JpegEncoder(), FileOutput(output))
 
 # Time last PIR sensor something
 elapsed_time = time.time()
+'''
 
 # Callbacks
 # Functions / Methods
@@ -177,7 +178,7 @@ def stop_video():
 	Video = False
 	
 	#picam2.close()
-	picam2.stop_preview()
+	#picam2.stop_preview()
 
 def turn_on_display():
 	print("--> Turning display on!")
@@ -190,15 +191,19 @@ def turn_off_display():
 	Display = False
 	#GPIO.setup(OUT_DISPLAY, GPIO.LOW)									# Todo
 
-'''
-def schrittkette(null):
+# Test gpiozero
+#def pressed():
+#    print("button was pressed")
+#def released():
+#    print("button was released")
+def schrittkette():
 	global Step_Cam
-	if Step_Cam < 2:
+	if Step_Cam < 3:
 		Step_Cam += 1
 	else:
 		Step_Cam = 0
-'''
-'''
+
+
 def step_chain_cam(null):
 	global Step_Cam, PRINT_ONCE_Cam
 	if Step_Cam < 2:
@@ -207,8 +212,8 @@ def step_chain_cam(null):
 		Step_Cam = 0
 	# Debug
 	PRINT_ONCE_Cam = True
-'''
-def no_detection_in_deltat(DELTA_T=60):
+
+def no_detection_in_deltat(DELTA_T=60):						# need 2 functions or object?
 	global elapsed_time
 	current_time = time.time()
 	delta_t = current_time - elapsed_time
@@ -224,16 +229,18 @@ def no_detection_in_deltat(DELTA_T=60):
 # Callbacks / CAM
 def callback_pir_outdoor(null):
 	callback_pir_sensor() # Reset last motion detection
-	global Step_Cam
-	if Step_Cam == 0:
+	global Step_Cam, FLAG_PRINT_ONCE_CAM
+	if Step_Cam < 3:
 		Step_Cam += 1
+		FLAG_PRINT_ONCE_CAM = True
 
 # Callbacks / DISPLAY
 def callback_pir_indoor(null):
 	callback_pir_sensor()
-	global Step_Display
-	if Step_Display == 0:
+	global Step_Display, FLAG_PRINT_ONCE_DISPLAY
+	if Step_Display < 3:
 		Step_Display += 1
+		FLAG_PRINT_ONCE_DISPLAY = True
 
 # Reset last motion detection
 def callback_pir_sensor():
@@ -242,75 +249,92 @@ def callback_pir_sensor():
 	elapsed_time = time.time()
 
 # Console
-def print_once(string):
+'''
+def print_once(strings):
 	global FLAG_PRINT_ONCE
 	if PRINT_ONCE:
-		print(str(string))
+		for i in strings:
+			print(i)
 	FLAG_PRINT_ONCE = False
+'''
+def print_once_cam(string):
+	global FLAG_PRINT_ONCE_CAM
+	if FLAG_PRINT_ONCE_CAM:
+		print(string)
+	FLAG_PRINT_ONCE_CAM = False
+
+def print_once_display(string):
+	global FLAG_PRINT_ONCE_DISPLAY
+	if FLAG_PRINT_ONCE_DISPLAY:
+		print(string)
+	FLAG_PRINT_ONCE_DISPLAY = False
 
 # Events
-'''
-GPIO.add_event_detect(IN_BUTTON, 			# TESTING			
-					  GPIO.RISING, 
-					  callback=step_chain_cam,
-					  bouncetime=200)
-'''
-
-GPIO.add_event_detect(PIR_Outdoor, 					
-					  GPIO.RISING, 
-					  callback=callback_pir_outdoor,
-					  bouncetime=200)
-
-GPIO.add_event_detect(PIR_Indoor, 						
-					  GPIO.RISING, 
-					  callback=callback_pir_indoor,
-					  bouncetime=200)
+#button.wait_for_press(schrittkette())
+#button.when_pressed = pressed
+#button.when_released = released
+button.when_pressed = schrittkette
+pir_outdoor.when_pressed = callback_pir_outdoor
+pir_indoor.when_pressed = callback_pir_indoor
 
 def main():
 	try:
+		global Step_Cam, Step_Display
+		global FLAG_PRINT_ONCE_CAM, FLAG_PRINT_ONCE_DISPLAY
+		
 		# Set up and start the streaming server
-		address = ('', 8000)
-		server = StreamingServer(address, StreamingHandler)
-		server.serve_forever()
+		#address = ('', 8000)
+		#server = StreamingServer(address, StreamingHandler)
+		#server.serve_forever()
 		
 		# cam outdoor & display indoor
 		while True:
 			time.sleep(1)
-			global Step_Cam, Step_Display
-			print(Step_Cam)
+		
 			# CAMERA
 			if Step_Cam == 0:
-				print_once("Cam #0 - Init.")
+				print_once_cam("Cam#0 - Init.")
 			elif Step_Cam == 1:
-				print_once("Cam #1 - Start recording.")
-				start_video()
-				Step_Cam += 1
+				print_once_cam("Cam#1 - detect#1.")
 			elif Step_Cam == 2:
-				print_once("Cam #2 - Stop recording.")
+				print_once_cam("Cam#2 - detect#2.")
+			elif Step_Cam == 3:
+				print_once_cam("Cam#3 - detect#3 = Start recording.")
+				start_video()
+				FLAG_PRINT_ONCE_CAM = True
+				# Increment=Start if 3 detections in 3 seconds
+				Step_Cam += 1
+			elif Step_Cam == 4:
+				print_once_cam("Cam#4 - Stop recording in ...")
 				if no_detection_in_deltat(10):
 					Step_Cam = 0
 					stop_video()
-					
-					
+	
 			# DISPLAY
-			if Step_Display:
-				print_once("Display #0 - Init.")
+			if Step_Display == 0:
+				print_once_display("Display#0 - Init.")
 			elif Step_Display == 1:
-				print_once("Display #1 - ON.")
-				turn_on_display()
-				Step_Display += 1
+				print_once_display("Display#1 - detect#1.")
 			elif Step_Display == 2:
-				print_once("Display #2 - Display will be turned OFF in ...")
+				print_once_display("Display#2 - detect#2.")
+			elif Step_Display == 3:
+				print_once_display("Display#3 - detect#3 = turn ON.")
+				turn_on_display()
+				FLAG_PRINT_ONCE_DISPLAY = True
+				# Increment=Start if 3 detections in 3 seconds
+				Step_Display += 1
+			elif Step_Display == 4:
+				print_once_display("Display#4 - Display will be turned OFF in ...")
 				if no_detection_in_deltat(60):
 					turn_off_display()
 					Step_Display == 0
-
+	
 	except KeyboardInterrupt:
 		print("Abort!")
 	finally:
-		print("GPIO cleanup!")
-		GPIO.cleanup()
-		picam2.stop_recording()
+		print("finished!")
+		#GPIO.cleanup()
+		#picam2.stop_recording()
 
 if __name__ == "__main__":
 	main()
