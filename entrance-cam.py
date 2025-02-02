@@ -5,6 +5,7 @@
 # Import
 # Import / System
 import time
+import asyncio
 import datetime
 import socket
 
@@ -57,9 +58,10 @@ Step_Cam = 				0
 Step_Display = 			0
 
 # Parameters / Debugging and testing
-flag_streaming = 		False # 0 = preview, 1 = vlc stream
+flag_streaming 			=	False			# 0 = preview, 1 = vlc stream
 FLAG_PRINT_ONCE_CAM		=	True
 FLAG_PRINT_ONCE_DISPLAY	=	True
+CONST_N_DETECTS			= 	8.0				# seconds
 
 # Initialize Inputs/Outputs
 # input
@@ -195,8 +197,8 @@ picam2.start_recording(JpegEncoder(), FileOutput(output))
 '''
 
 # Time last PIR sensor something
-elapsed_time_pir = time.time() # value 0 to begin with?
-elapsed_time_pir_outside = time.time()
+elapsed_time_pir = time.time() 				# value 0 to begin with?
+elapsed_time_pir_outside = time.time() 		# save times of first 2 detections
 
 # Callbacks
 # Functions / Methods
@@ -231,11 +233,6 @@ def turn_off_display():
 	Display = False
 	#GPIO.setup(OUT_DISPLAY, GPIO.LOW)									# Todo
 
-# Test gpiozero
-#def pressed():
-#    print("button was pressed")
-#def released():
-#    print("button was released")
 def schrittkette():
 	global Step_Cam
 	if Step_Cam < 3:
@@ -243,53 +240,42 @@ def schrittkette():
 	else:
 		Step_Cam = 0
 
-
-def step_chain_cam(null):
-	global Step_Cam, PRINT_ONCE_Cam
-	if Step_Cam < 2:
-		Step_Cam += 1
-	else:
-		Step_Cam = 0
-	# Debug
-	PRINT_ONCE_Cam = True
-
 def time_delta(elapsed_time, dT=60):
-	current_time = time.time()
-	delta_t = current_time - elapsed_time
+	now = time.time()
+	delta_t = now - elapsed_time
 	#print("c", current_time, "seconds")
 	#print("e", elapsed_time, "seconds")
 	print("... dT =", round(delta_t, 1), "seconds.")
 	return True if delta_t > dT else False
 
-def time_delta_abs(elapsed_time, dT=60):
-	current_time = time.time()
-	delta_t = current_time - elapsed_time
-	#print("c", current_time, "seconds")
-	#print("e", elapsed_time, "seconds")
-	print("... dT =", round(delta_t, 1), "seconds.")
-	return delta_t > dT
-
 # Callbacks
 # Callbacks / CAM
 def increment_pir_outdoor(null):
 	callback_pir_sensor() # Reset last motion detection
-	global Step_Cam, FLAG_PRINT_ONCE_CAM
-	if Step_Cam < 2:
-		Step_Cam += 1
-		FLAG_PRINT_ONCE_CAM = True
-	elif Step_Cam == 2:
-		delta_t = time.time() - elapsed_time_pir_outside
-		if delta_t < 3:
-			Step_Cam += 1
-			FLAG_PRINT_ONCE_CAM = True
-		else:
-			# Reset step because not 3 detections in 3 seconds
-			Step_Cam = 0
-	# We want 3 detections in e.g. 3 seconds to turn on video
-	# Get and save the time to compare with
+	global Step_Cam, elapsed_time_pir_outside
+	global FLAG_PRINT_ONCE_CAM, CONST_N_DETECTS
+
+	now = time.time()
+
+	# First detection
 	if Step_Cam == 0:
-		callback_pir_sensor_first()
-		FLAG_PRINT_ONCE_CAM = True
+		first_pir_detection(now)
+		Step_Cam += 1
+	elif Step_Cam < 3:
+		# We want N detections in CONST_N_DETECTS (e.g. 3 seconds) 
+		# to turn on video.
+		#print(now)
+		#print(elapsed_time_pir_outside)
+		print(now - elapsed_time_pir_outside)
+		if (now - elapsed_time_pir_outside) < CONST_N_DETECTS:
+			Step_Cam += 1
+		else:
+			# Reset step when no N detections in 3 seconds
+			first_pir_detection(now)
+			Step_Cam = 1			# = 1st detection ????????????????
+
+	FLAG_PRINT_ONCE_CAM = True
+	print("%d detection in %f seconds" % (Step_Cam, now - elapsed_time_pir_outside))
 
 # Callbacks / DISPLAY
 def increment_pir_indoor(null):
@@ -306,10 +292,10 @@ def callback_pir_sensor():
 	elapsed_time_pir = time.time()
 
 # Reset only with first detection
-def callback_pir_sensor_first():
-	print("Motion detected - Outside #1!")
+def first_pir_detection(now):
+	print("Motion detected - Outside #1/3!")
 	global elapsed_time_pir_outside
-	elapsed_time_pir_outside = time.time()
+	elapsed_time_pir_outside = now
 
 # Console
 def print_once_cam(string):
@@ -325,14 +311,11 @@ def print_once_display(string):
 	FLAG_PRINT_ONCE_DISPLAY = False
 
 # Events
-#button.wait_for_press(schrittkette())
-#button.when_pressed = pressed
-#button.when_released = released
 button.when_pressed = schrittkette
 pir_outdoor.when_pressed = increment_pir_outdoor
 pir_indoor.when_pressed = increment_pir_indoor
 
-def main():
+async def main():
 	try:
 		global Step_Cam, Step_Display
 		global elapsed_time_pir
@@ -345,7 +328,7 @@ def main():
 		
 		# cam outdoor & display indoor
 		while True:
-			time.sleep(0.5)
+			await asyncio.sleep(0.1)
 		
 			#if USB_CAMERA:
 			#	ret, frame = cam.read()
@@ -363,16 +346,17 @@ def main():
 				start_video()
 				FLAG_PRINT_ONCE_CAM = True
 				# Increment=Start if 3 detections in 3 seconds
-				Step_Cam += 1
+				Step_Cam += 1 # ???
 			elif Step_Cam == 4:
 				print_once_cam("Cam#4 - Stop recording in ...")
 				if time_delta(elapsed_time_pir, 10):
 					Step_Cam = 0
 					stop_video()
-	
+
+			'''
 			# DISPLAY
 			if Step_Display == 0:
-				print_once_display("Display#0 - Init.")
+				#print_once_display("Display#0 - Init.")
 			elif Step_Display == 1:
 				print_once_display("Display#1 - detect#1.")
 			elif Step_Display == 2:
@@ -387,12 +371,13 @@ def main():
 				print_once_display("Display#4 - Display will be turned OFF in ...")
 				if time_delta(elapsed_time_pir, 60):
 					turn_off_display()
-					Step_Display == 0
-	
+					Step_Display = 0
+			'''
 	except KeyboardInterrupt:
 		print("Abort!")
 	finally:
 		print("finished!")
+
 		'''
 		if USB_CAMERA:
 			cv2.imwrite('/home/pi/Desktop/testimage.jpg', image)
@@ -401,6 +386,6 @@ def main():
 		else:
 			picam2.stop_recording()
 			'''
-
+	
 if __name__ == "__main__":
-	main()
+	asyncio.run(main())
