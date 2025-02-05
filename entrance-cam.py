@@ -1,3 +1,4 @@
+#! /usr/bin/python3
 # Program to activate a camera via motion detectors and also turning on 
 # a touch screen monitor to see which person is standing in front of the 
 # entrance door.
@@ -21,35 +22,32 @@ from http import server
 from threading import Condition
 
 # Import / Camera
-USB_CAMERA = True
-if USB_CAMERA:
-	import cv2
-else:
-	from picamera2 import Picamera2#, Preview
-	from picamera2.encoders import JpegEncoder, H264Encoder, Quality
-	from picamera2.outputs import FileOutput
+from picamera2 import Picamera2#, Preview
+from picamera2.encoders import JpegEncoder, H264Encoder, MJPEGEncoder, Quality
+from picamera2.outputs import FileOutput, FfmpegOutput, CircularOutput
 
 # HTML page for the MJPEG streaming demo
 PAGE = """\
 <html>
 <head>
-<title>RaspberryTips Pi Cam Stream</title>
+<title>picamera2 MJPEG streaming demo</title>
 </head>
 <body>
-<h1>Raspberry Tips Pi Camera Live Stream Demo</h1>
-<img src="stream.mjpg" width="640" height="480" />
+<h1>Picamera2 MJPEG Streaming Demo</h1>
+<img src="stream.mjpg" width="1280" height="960" />
 </body>
 </html>
 """
 
 # Parameters
 # Parameters / Inputs	Physical#
-Dummy_PIN = 			17		# 6
-PIR_Outdoor_PIN = 		27		# 7
-PIR_Indoor_PIN = 		22		# 8
-BUTTON_PIN = 			23		# 8
+PIR_Outdoor_PIN1 = 		17		# 6
+PIR_Indoor_PIN1 = 		27		# 7
+PIR_Indoor_PIN2 = 		22		# 8
+#PIR_Outdoor_PIN2 = 		23		# 
+BUTTON_PIN =			23
 # Parameters / Outputs
-DISPLAY_PIN = 			24		# 9 # not necessary if KNX is used!
+#DISPLAY_PIN = 			24		# not necessary if KNX is used!
 
 # Parameters / Flags
 Video = 				False
@@ -62,68 +60,26 @@ flag_streaming 			=	False			# 0 = preview, 1 = vlc stream
 FLAG_PRINT_ONCE_CAM		=	True
 FLAG_PRINT_ONCE_DISPLAY	=	True
 CONST_N_DETECTS			= 	8.0				# seconds
+INCREMENT_PIR_INNER_INI = 	0
 
 # Initialize Inputs/Outputs
 # input
-dummy = Button(Dummy_PIN, pull_up=False, bounce_time=0.2)
-pir_outdoor = Button(PIR_Outdoor_PIN, pull_up=False, bounce_time=0.2)
-pir_indoor = Button(PIR_Indoor_PIN, pull_up=False, bounce_time=0.2)
+pir_outdoor1 = Button(PIR_Outdoor_PIN1, pull_up=False, bounce_time=0.2)
+#pir_outdoor2 = Button(PIR_Outdoor_PIN2, pull_up=False, bounce_time=0.2)
+pir_indoor1 = Button(PIR_Indoor_PIN1, pull_up=False, bounce_time=0.2)
+pir_indoor2 = Button(PIR_Indoor_PIN2, pull_up=False, bounce_time=0.2)
 button = Button(BUTTON_PIN, pull_up=False, bounce_time=0.2)
 # output
-display = Button(DISPLAY_PIN, pull_up=False, bounce_time=0.2) # not necessary if KNX is used!
+#display = Button(DISPLAY_PIN) # not necessary if KNX is used!
 
 # =============================================================================
 # Camera setup
 # =============================================================================
-#cam = cv2.VideoCapture(0)
-#cam.set(3,640) # set Width
-#cam.set(4,480) # set Height       
-#cv2.namedWindow("camera")
+# Camera setup
+output_path = "/home/pi/Desktop/"
+file_type = ".h264"
+#file_type = ".mp4"
 
-'''
-CONTINUE HERE: CAM <------------------------------------------------------------------------------------------------###
-cap = cv2.VideoCapture(0)
-if not cap.isOpened():
-    print("Cannot open camera")
-    exit()
-while True:
-    # Capture frame-by-frame
-    ret, frame = cap.read()
- 
-    # if frame is read correctly ret is True
-    if not ret:
-        print("Can't receive frame (stream end?). Exiting ...")
-        break
-    # Our operations on the frame come here
-    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-    # Display the resulting frame
-    cv2.imshow('frame', gray)
-    if cv2.waitKey(1) == ord('q'):
-        break
-'''
-'''
-# Settings for image recording
-if USB_CAMERA:
-	cam = cv2.VideoCapture(0)
-	cam.set(3,640) # set Width
-	cam.set(4,480) # set Height       
-	cv2.namedWindow("camera")
-else:
-	# Camera setup
-	picam2 = Picamera2()
-	video_config = picam2.create_video_configuration(
-			buffer_count=1, 
-			encode="main", 
-			queue=False, 
-			main={"size": (1536, 864)}, 
-			lores={"size": (320, 240)}) 
-	picam2.configure(video_config)
-	encoder = H264Encoder(bitrate=10000000, iperiod=1)
-	output_path = "/home/pi/Desktop/"
-	output = ".h264"
-	REC_TIME = 30
-'''
-'''
 # Class to handle streaming output
 class StreamingOutput(io.BufferedIOBase):
     def __init__(self):
@@ -139,12 +95,10 @@ class StreamingOutput(io.BufferedIOBase):
 class StreamingHandler(server.BaseHTTPRequestHandler):
     def do_GET(self):
         if self.path == '/':
-            # Redirect root path to index.html
             self.send_response(301)
             self.send_header('Location', '/index.html')
             self.end_headers()
         elif self.path == '/index.html':
-            # Serve the HTML page
             content = PAGE.encode('utf-8')
             self.send_response(200)
             self.send_header('Content-Type', 'text/html')
@@ -152,7 +106,6 @@ class StreamingHandler(server.BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(content)
         elif self.path == '/stream.mjpg':
-            # Set up MJPEG streaming
             self.send_response(200)
             self.send_header('Age', 0)
             self.send_header('Cache-Control', 'no-cache, private')
@@ -175,7 +128,6 @@ class StreamingHandler(server.BaseHTTPRequestHandler):
                     'Removed streaming client %s: %s',
                     self.client_address, str(e))
         else:
-            # Handle 404 Not Found
             self.send_error(404)
             self.end_headers()
 
@@ -184,43 +136,57 @@ class StreamingServer(socketserver.ThreadingMixIn, server.HTTPServer):
     allow_reuse_address = True
     daemon_threads = True
 
+#lsize = (320, 240)
+
 # Create Picamera2 instance and configure it
 picam2 = Picamera2()
-video_config = picam2.create_video_configuration(
+video_config = picam2.create_video_configuration(main={"size": (1920, 1080)})
+#video_config = picam2.create_video_configuration(main={"size": (1280, 720)})
+
+#video_config = picam2.create_video_configuration(main={"size": (1280, 720), "format": "RGB888"}, lores={"size": lsize, "format": "YUV420"})
+#video_config = picam2.create_video_configuration()
+'''video_config = picam2.create_video_configuration(
 		buffer_count=1, 
 		encode="main", 
 		queue=False, 
-		main={"size": (1280, 720)})
+		main={"size": (1920, 1080)})'''
 picam2.configure(video_config)
 output = StreamingOutput()
-picam2.start_recording(JpegEncoder(), FileOutput(output))
-'''
+#picam2.start_recording(JpegEncoder(), FileOutput(output))
+picam2.start_recording(MJPEGEncoder(), FileOutput(output))
 
 # Time last PIR sensor something
 elapsed_time_pir = time.time() 				# value 0 to begin with?
 elapsed_time_pir_outside = time.time() 		# save times of first 2 detections
+elapsed_time_pir_inner = [None] * 3			# save times of first 2 detections
+elapsed_time_pir_outer = [None] * 3			# save times of first 2 detections
+#elapsed_time_pir_in = [0, 1, 2, 3] 		# save times of first 2 detections
 
 # Callbacks
 # Functions / Methods
-def start_video():
+#def start_video():
+async def start_video():
 	print("Start recording ...")
 	Video = True
+
 	now = datetime.datetime.now()
 	date = str(now.year) + "-" + str(now.month) + "-" + \
 		   str(now.day) + "_" + str(now.hour) + ":" + \
 		   str(now.minute) + ":" + str(now.second)
-	'''
-	picam2.start_preview(Preview.QTGL)
-	picam2.start_recording(encoder, output_path + date + output) # second time error
-	'''
-	#time.sleep(REC_TIME)
+	
+	try:
+		address = ('', 8000)
+		server = StreamingServer(address, StreamingHandler)
+		server.serve_forever()
+	except:
+		print("Stop recording")
+		#picam2.stop_recording()
 
 def stop_video():
 	# Use this instead of time.pause possible?
 	Video = False
 	
-	#picam2.close()
-	#picam2.stop_preview()
+	picam2.stop_recording()
 
 def turn_on_display():
 	print("--> Turning display on!")
@@ -233,13 +199,6 @@ def turn_off_display():
 	Display = False
 	#GPIO.setup(OUT_DISPLAY, GPIO.LOW)									# Todo
 
-def schrittkette():
-	global Step_Cam
-	if Step_Cam < 3:
-		Step_Cam += 1
-	else:
-		Step_Cam = 0
-
 def time_delta(elapsed_time, dT=60):
 	now = time.time()
 	delta_t = now - elapsed_time
@@ -248,37 +207,53 @@ def time_delta(elapsed_time, dT=60):
 	print("... dT =", round(delta_t, 1), "seconds.")
 	return True if delta_t > dT else False
 
+def reset_detections(t):
+	# todo
+	return time
+
+def check_n_detects(timings):
+	global elapsed_time_pir_inner, CONST_N_DETECTS
+	return True if (elapsed_time_pir_inner[-1] - elapsed_time_pir_inner[0]) < CONST_N_DETECTS else False
+
 # Callbacks
 # Callbacks / CAM
-def increment_pir_outdoor(null):
-	callback_pir_sensor() # Reset last motion detection
-	global Step_Cam, elapsed_time_pir_outside
-	global FLAG_PRINT_ONCE_CAM, CONST_N_DETECTS
+def increment_pir_inner(null):
+	return
+	#callback_pir_sensor() # Reset last motion detection
+	global Step_Cam, elapsed_time_pir_inner
+	global FLAG_PRINT_ONCE_CAM
+	global INCREMENT_PIR_INNER_INI
 
 	now = time.time()
+	
+	print("increment_pir_inner")
+	print(now)
 
-	# First detection
-	if Step_Cam == 0:
-		first_pir_detection(now)
-		Step_Cam += 1
-	elif Step_Cam < 3:
-		# We want N detections in CONST_N_DETECTS (e.g. 3 seconds) 
-		# to turn on video.
-		#print(now)
-		#print(elapsed_time_pir_outside)
-		print(now - elapsed_time_pir_outside)
-		if (now - elapsed_time_pir_outside) < CONST_N_DETECTS:
+	# INITIALIZE
+	#if INCREMENT_PIR_INNER_INI < 3:
+	if elapsed_time_pir_inner[0] == None:
+		elapsed_time_pir_inner[0] = now
+		INCREMENT_PIR_INNER_INI += 1
+	elif elapsed_time_pir_inner[1] == None:
+		elapsed_time_pir_inner[1] = now
+		INCREMENT_PIR_INNER_INI += 1
+	elif elapsed_time_pir_inner[2] == None:
+		elapsed_time_pir_inner[2] = now
+		INCREMENT_PIR_INNER_INI += 1
+
+	if check_n_detects and not (None in elapsed_time_pir_inner):
+		elapsed_time_pir_inner = [None] * 3
+		elapsed_time_pir_inner[0] = now
+	else:
+		# 3 detections in n seconds
+		if Step_Cam < 3:
 			Step_Cam += 1
-		else:
-			# Reset step when no N detections in 3 seconds
-			first_pir_detection(now)
-			Step_Cam = 1			# = 1st detection ????????????????
 
-	FLAG_PRINT_ONCE_CAM = True
-	print("%d detection in %f seconds" % (Step_Cam, now - elapsed_time_pir_outside))
+			#FLAG_PRINT_ONCE_CAM
+			return True
 
 # Callbacks / DISPLAY
-def increment_pir_indoor(null):
+def increment_pir_outer(null):
 	callback_pir_sensor()
 	global Step_Display, FLAG_PRINT_ONCE_DISPLAY
 	if Step_Display < 3:
@@ -291,11 +266,13 @@ def callback_pir_sensor():
 	global elapsed_time_pir
 	elapsed_time_pir = time.time()
 
+'''
 # Reset only with first detection
 def first_pir_detection(now):
 	print("Motion detected - Outside #1/3!")
 	global elapsed_time_pir_outside
-	elapsed_time_pir_outside = now
+	elapsed_time_pir_outside[0] = now
+'''
 
 # Console
 def print_once_cam(string):
@@ -310,11 +287,31 @@ def print_once_display(string):
 		print(string)
 	FLAG_PRINT_ONCE_DISPLAY = False
 
+t = time.time()
+
+def test_pir(null):
+	global t
+	print("test pir %f" % (time.time() - t))
+
+# Testing
+def schrittkette(null):
+	global Step_Cam
+	print("Step_Cam", Step_Cam)
+
+	if Step_Cam < 4:
+		Step_Cam += 1
+	#else:
+	#	Step_Cam = 0
+
 # Events
 button.when_pressed = schrittkette
-pir_outdoor.when_pressed = increment_pir_outdoor
-pir_indoor.when_pressed = increment_pir_indoor
+#pir_outdoor.when_pressed = increment_pir_outdoor
+#pir_indoor.when_pressed = increment_pir_indoor
 
+pir_indoor1.when_pressed = increment_pir_inner
+#pir_indoor2.when_pressed = increment_pir_inner
+
+#async def main():
 async def main():
 	try:
 		global Step_Cam, Step_Display
@@ -328,7 +325,8 @@ async def main():
 		
 		# cam outdoor & display indoor
 		while True:
-			await asyncio.sleep(0.1)
+			#await asyncio.sleep(0.1)
+			time.sleep(0.1)
 		
 			#if USB_CAMERA:
 			#	ret, frame = cam.read()
@@ -337,21 +335,25 @@ async def main():
 			# CAMERA
 			if Step_Cam == 0:
 				print_once_cam("Cam#0 - Init.")
+				pass
 			elif Step_Cam == 1:
 				print_once_cam("Cam#1 - detect#1.")
+				pass
 			elif Step_Cam == 2:
 				print_once_cam("Cam#2 - detect#2.")
+				pass
 			elif Step_Cam == 3:
 				print_once_cam("Cam#3 - detect#3 = Start recording.")
-				start_video()
+				
+				await start_video()
 				FLAG_PRINT_ONCE_CAM = True
 				# Increment=Start if 3 detections in 3 seconds
 				Step_Cam += 1 # ???
 			elif Step_Cam == 4:
 				print_once_cam("Cam#4 - Stop recording in ...")
-				if time_delta(elapsed_time_pir, 10):
+				if time_delta(elapsed_time_pir, 60):
 					Step_Cam = 0
-					stop_video()
+					await stop_video()
 
 			'''
 			# DISPLAY
@@ -376,8 +378,9 @@ async def main():
 	except KeyboardInterrupt:
 		print("Abort!")
 	finally:
-		print("finished!")
-
+		
+		print("Stop recording")
+		picam2.stop_recording()
 		'''
 		if USB_CAMERA:
 			cv2.imwrite('/home/pi/Desktop/testimage.jpg', image)
@@ -386,6 +389,8 @@ async def main():
 		else:
 			picam2.stop_recording()
 			'''
-	
+		print("finished!")
+
 if __name__ == "__main__":
 	asyncio.run(main())
+	#main()
