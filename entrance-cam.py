@@ -47,7 +47,9 @@ PAGE = """\
 Step_Cam 				= 	0
 Step_Display 			= 	0
 FLAG_CAM 				= 	False
-FLAG_DISPLAY 			= 	True
+FLAG_DISPLAY 			= 	False
+FLAG_DISPLAY_TEST 		= 	False
+FLAG_CAM_TEST			= 	True
 
 # Parameters / Debugging and testing
 flag_streaming 			=	False			# 0 = preview, 1 = vlc stream
@@ -64,17 +66,17 @@ INCREMENT_PIR_INNER_INI = 	0
 PIR_Outdoor_PIN1 		= 	17		# 6
 PIR_Indoor_PIN1 		= 	27		# 7
 PIR_Indoor_PIN2 		= 	22		# 8
-#PIR_Outdoor_PIN2 		= 	23		# 
-BUTTON_PIN 				=	23
+PIR_Outdoor_PIN2 		= 	23		# 
+BUTTON_PIN 				=	24
 # Parameters / Outputs
 #DISPLAY_PIN 			= 	24		# not necessary if KNX is used!
 
 # Initialize Inputs/Outputs
 # input
-pir_outdoor1 = Button(PIR_Outdoor_PIN1, pull_up=False, bounce_time=0.2)
-#pir_outdoor2 = Button(PIR_Outdoor_PIN2, pull_up=False, bounce_time=0.2)
-pir_indoor1 = Button(PIR_Indoor_PIN1, pull_up=False, bounce_time=0.2)
-pir_indoor2 = Button(PIR_Indoor_PIN2, pull_up=False, bounce_time=0.2)
+pir_outdoor1 = 	Button(PIR_Outdoor_PIN1, 	pull_up=False, bounce_time=0.2)
+pir_outdoor2 = 	Button(PIR_Outdoor_PIN2, 	pull_up=False, bounce_time=0.2)
+pir_indoor1 = 	Button(PIR_Indoor_PIN1, 	pull_up=False, bounce_time=0.2)
+pir_indoor2 = 	Button(PIR_Indoor_PIN2, 	pull_up=False, bounce_time=0.2)
 button = Button(BUTTON_PIN, pull_up=False, bounce_time=0.2)
 # output
 #display = Button(DISPLAY_PIN) # not necessary if KNX is used!
@@ -84,12 +86,11 @@ button = Button(BUTTON_PIN, pull_up=False, bounce_time=0.2)
 # =============================================================================
 # Time last PIR sensor something
 elapsed_time_pir = time.time() 				# value 0 to begin with?
-elapsed_time_pir_outside = time.time() 		# save times of first 2 detections
-detections_pir_inner = [None] * 3			# save times of first 2 detections
-last_detection_inner = None
-print(detections_pir_inner)
-elapsed_time_pir_outer = [None] * 3			# save times of first 2 detections
-#elapsed_time_pir_in = [0, 1, 2, 3] 		# save times of first 2 detections
+detections_pir_in = [None] * 3			# save times of 3 detections
+detections_pir_out = [None] * 3			# save times of 3 detections
+last_detection_in = None
+last_detection_out = None
+print(detections_pir_in)
 
 # =============================================================================
 # Streaming setup
@@ -222,177 +223,195 @@ def stop_video():
 		print("Exception raised in stop_video at stop_recording!")
 
 def turn_on_display():
-	print("Turning display on.")
+	print("turn_on_display()")
+	global FLAG_DISPLAY
+	FLAG_DISPLAY = True
 	#GPIO.setup(OUT_DISPLAY, GPIO.HIGH)									# Todo
 	# TBD: Program KNX address (vs directly via relais) + NodeRED
 
 def turn_off_display():
-	print("Turning display off.")
+	print("turn_off_display()")
+	FLAG_DISPLAY = False
 	#GPIO.setup(OUT_DISPLAY, GPIO.LOW)									# Todo
 
-def calc_delta_t(elapsed_time, dT=60):
+def calc_delta_t(elapsed_time, dT=60, typ="", str=""):
 	now = time.time()
 	delta_t = now - elapsed_time
-	#print("c", current_time, "seconds")
-	#print("e", elapsed_time, "seconds")
+	#print("now", now, "seconds")
+	#print("delta_t", delta_t, "seconds")
 	if not round(delta_t) % 10:
-		print("... dT =", round(delta_t, 1), "seconds.")
+		print("%s#2 %s %d s." % (typ, str, dT-delta_t))
+	
 	return True if delta_t > dT else False
 
-def reset_detections(t):
-	# todo
-	return time
+def skip_detections(detections):
+	detections[0] = detections[1]
+	detections[1] = detections[2]
+	detections[2] = None
+	
+	return detections
+
+def fill_detections(detections, t):
+	if detections[0] == None:
+		detections[0] = t
+	elif detections[1] == None:
+		detections[1] = t
+	elif detections[2] == None:	
+		detections[2] = t
+	
+	return detections
 
 def check_n_detects(timings):
 	global CONST_N_DETECTS_in_T
 	delta = timings[-1] - timings[0]
-	print("deltaT = %.1f" % round( delta ,1))
+	#print("deltaT = %.1f" % round( delta ,1))
+	
 	return True if delta < CONST_N_DETECTS_in_T else False
 
 # Callbacks
-# Callbacks / CAM
-def increment_pir_inner(null):
-	global Step_Display
-	global detections_pir_inner, last_detection_inner
-	global FLAG_PRINT_ONCE_DISPLAY #, INCREMENT_PIR_INNER_INI
-
+# Callbacks / DISPLAY
+def increment_pir_in():
+	global Step_Display, detections_pir_in, last_detection_in, FLAG_PRINT_ONCE_DISPLAY, elapsed_time_pir
 	now = time.time()
-	last_detection_inner = now # Saves last detection
-	callback_pir_sensor()
+	last_detection_in = now
+
+	# Reset if any PIR gets a detection
+	elapsed_time_pir = callback_pir_sensor()
 
 	if Step_Display < 1:
-		# INITIALIZE
-		if detections_pir_inner[0] == None:
-			detections_pir_inner[0] = now
-			#INCREMENT_PIR_INNER_INI += 1
-		elif detections_pir_inner[1] == None:
-			detections_pir_inner[1] = now
-			#INCREMENT_PIR_INNER_INI += 1
-		elif detections_pir_inner[2] == None:	
-			detections_pir_inner[2] = now
-			#INCREMENT_PIR_INNER_INI += 1
+		# INITIALIZE = new detection
+		#detections = fill_detections(detections, now)
+		if detections_pir_in[0] == None:
+			detections_pir_in[0] = now
+		elif detections_pir_in[1] == None:
+			detections_pir_in[1] = now
+		elif detections_pir_in[2] == None:	
+			detections_pir_in[2] = now
 		
-			if check_n_detects(detections_pir_inner) and not (None in detections_pir_inner): #INCREMENT_PIR_INNER_INI
+			if check_n_detects(detections_pir_in) and not (None in detections_pir_in):
 				# 3 detects < 8 secs & 3 timings --> Reset
-				detections_pir_inner = [None] * 3
-				#elapsed_time_pir_inner[0] = now
+				detections_pir_in = [None] * 3
+
 				# Turn on display
 				if Step_Display == 0:
 					Step_Display += 1
 					FLAG_PRINT_ONCE_DISPLAY = True
 			else:
-				# Remove first and set last one to None for nect detection
-				detections_pir_inner[0] = detections_pir_inner[1]
-				detections_pir_inner[1] = detections_pir_inner[2]
-				detections_pir_inner[2] = None
+				# Remove 1 detection
+				detections_pir_in = skip_detections(detections_pir_in)
 
-	#print("elapsed_time_pir_inner", detections_pir_inner)
+# Callbacks / CAM
+def increment_pir_out():
+	global Step_Cam, detections_pir_out, last_detection_out, FLAG_PRINT_ONCE_CAM, elapsed_time_pir
+	now = time.time()
+	last_detection_out = now
 
-# Callbacks / DISPLAY
-def increment_pir_outer(null):
-	callback_pir_sensor()
-	global Step_Display, FLAG_PRINT_ONCE_DISPLAY
-	if Step_Display < 3:
-		Step_Display += 1
-		FLAG_PRINT_ONCE_DISPLAY = True
+	# Reset if any PIR gets a detection
+	elapsed_time_pir = callback_pir_sensor()
+
+	if Step_Cam < 1:
+		# INITIALIZE
+		if detections_pir_out[0] == None:
+			detections_pir_out[0] = now
+		elif detections_pir_out[1] == None:
+			detections_pir_out[1] = now
+		elif detections_pir_out[2] == None:	
+			detections_pir_out[2] = now
+		
+			if check_n_detects(detections_pir_out) and not (None in detections_pir_out): #INCREMENT_PIR_INNER_INI
+				# 3 detects < 8 secs & 3 timings --> Reset
+				detections_pir_out = [None] * 3
+
+				# Turn on display
+				if Step_Cam == 0:
+					Step_Cam += 1
+					FLAG_PRINT_ONCE_CAM = True
+			else:
+				# Remove 1 detection
+				detections_pir_out = skip_detections(detections_pir_out)
 
 # Reset last motion detection
 def callback_pir_sensor():
-	#print("Motion detected!")
-	global elapsed_time_pir
-	elapsed_time_pir = time.time()
+	print("PIR: Motion detected!")
+	return time.time()
 
 # Console
 def print_once_cam(string):
 	global FLAG_PRINT_ONCE_CAM
 	if FLAG_PRINT_ONCE_CAM:
-		print(string)
+		print("\n%s" % string)
 	FLAG_PRINT_ONCE_CAM = False
 
 def print_once_display(string):
 	global FLAG_PRINT_ONCE_DISPLAY
 	if FLAG_PRINT_ONCE_DISPLAY:
-		print(string)
+		print("\n%s" % string)
 	FLAG_PRINT_ONCE_DISPLAY = False
 
 
 
 # Testing
-'''t = time.time()
-
-def test_pir(null):
-	global t
-	print("test pir %f" % (time.time() - t))'''
-
-'''def schrittkette(null):
-	global Step_Cam
-	print("Step_Cam", Step_Cam)
-
-	if Step_Cam < 4:
-		Step_Cam += 1
-	#else:
-	#	Step_Cam = 0
-	FLAG_PRINT_ONCE_CAM = True'''
 
 # Events
 #button.when_pressed = schrittkette
-#pir_outdoor.when_pressed = increment_pir_outdoor
-#pir_indoor.when_pressed = increment_pir_indoor
+#pir_indoor1.when_pressed = increment_pir_in
+#pir_indoor2.when_pressed = increment_pir_in
+pir_outdoor1.when_pressed = increment_pir_out
+pir_outdoor2.when_pressed = increment_pir_out
 
-pir_indoor1.when_pressed = increment_pir_inner
-pir_indoor2.when_pressed = increment_pir_inner
-
-#async def main():
+# =============================================================================
+# MAIN
+# =============================================================================
 def main():
+	global Step_Cam, Step_Display
+	global elapsed_time_pir
+	global FLAG_PRINT_ONCE_CAM
+	global FLAG_PRINT_ONCE_DISPLAY
 	try:
-		global Step_Cam, Step_Display
-		global elapsed_time_pir
-		global FLAG_PRINT_ONCE_CAM
-		global FLAG_PRINT_ONCE_DISPLAY
-		
 		# cam outdoor & display indoor
 		while True:
-			#await asyncio.sleep(0.1)
 			time.sleep(1)
 
 			# CAMERA
-			if FLAG_CAM:
+			if FLAG_CAM_TEST:
 				if Step_Cam == 0:
 					print_once_cam("Cam#0 - Init.")
 					pass
+
 				elif Step_Cam == 1:
+					# Increment=Start if 3 detections in 3 seconds
 					print_once_cam("Cam#1 - detect#3 = Start recording.")
 					
 					start_video()
-					#await start_video()
-					# Increment=Start if 3 detections in 3 seconds
-					Step_Cam += 1 # ???	
-				#elif Step_Cam == 2:
-				#	pass
-				#elif Step_Cam == 3:
-				#	pass
+					Step_Cam += 1
+
 				elif Step_Cam == 2:
-					print_once_cam("Cam#2 - Stop recording in ...")
+					t = 30
+					print_once_cam("Cam#2 - Stop recording in %d s.")
 					
-					if calc_delta_t(elapsed_time_pir, 30):
+					if calc_delta_t(elapsed_time_pir, t, "Cam", "- Stop recording in"):
 						Step_Cam = 0
 						stop_video()
 
 			# DISPLAY
-			if FLAG_DISPLAY:
+			if FLAG_DISPLAY_TEST:
 				if Step_Display == 0:
 					print_once_display("Display#0 - Init.")
 					pass
+
 				elif Step_Display == 1:
+					# Increment=Start if 3 detections in 3 seconds
 					print_once_display("Display#1 - turn ON.")
 					turn_on_display()
-					#FLAG_PRINT_ONCE_DISPLAY = True
-					# Increment=Start if 3 detections in 3 seconds
+					
 					Step_Display += 1
+					FLAG_PRINT_ONCE_DISPLAY = True
+
 				elif Step_Display == 2:
-					print_once_display("Display#2 - will be turned OFF in ...")
 					t = 60
-					delta_t = calc_delta_t(elapsed_time_pir, t)
+					print_once_display("Display#2 will be turned OFF in %d s." % t)
+										
+					delta_t = calc_delta_t(elapsed_time_pir, t, "Display", "will be turned OFF in")
 					if delta_t:
 						Step_Display = 0
 						turn_off_display()
@@ -413,5 +432,4 @@ def main():
 		print("finished!")
 
 if __name__ == "__main__":
-	#asyncio.run(main())
 	main()
