@@ -48,7 +48,7 @@ Step_Cam 				= 	0
 Step_Display 			= 	0
 FLAG_CAM 				= 	False
 FLAG_DISPLAY 			= 	False
-FLAG_DISPLAY_TEST 		= 	False
+FLAG_DISPLAY_TEST 		= 	True
 FLAG_CAM_TEST			= 	True
 
 # Parameters / Debugging and testing
@@ -330,7 +330,7 @@ def increment_pir_out():
 
 # Reset last motion detection
 def callback_pir_sensor():
-	print("PIR: Motion detected!")
+	#print("PIR: Motion detected!")
 	return time.time()
 
 # Console
@@ -352,8 +352,8 @@ def print_once_display(string):
 
 # Events
 #button.when_pressed = schrittkette
-#pir_indoor1.when_pressed = increment_pir_in
-#pir_indoor2.when_pressed = increment_pir_in
+pir_indoor1.when_pressed = increment_pir_in
+pir_indoor2.when_pressed = increment_pir_in
 pir_outdoor1.when_pressed = increment_pir_out
 pir_outdoor2.when_pressed = increment_pir_out
 
@@ -384,7 +384,7 @@ def main():
 					Step_Cam += 1
 
 				elif Step_Cam == 2:
-					t = 20
+					t = 30
 					print_once_cam("Cam#2 - Stop recording in %d s." % t)
 					
 					if calc_delta_t(elapsed_time_pir, t, "Cam", "- Stop recording in"):
