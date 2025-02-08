@@ -157,7 +157,7 @@ class StreamingServer(socketserver.ThreadingMixIn, server.HTTPServer):
 	def stop(self):
 		print("Stop streaming server ...")
 		self.server_close()
-		#self.shutdown
+		self.shutdown()
 
 # =============================================================================
 # Camera setup
@@ -189,7 +189,6 @@ thread = None
 
 # Callbacks
 # Functions / Methods
-#async def start_video():
 def start_video():
 	global server
 	global thread
@@ -215,8 +214,8 @@ def stop_video():
 	print("Stop video ...")
 
 	try:
-		#server.stop()
-		server.shutdown()
+		server.stop()
+		#server.shutdown()
 		thread.join()
 		#picam2.stop_recording()
 	except:
@@ -387,7 +386,7 @@ def main():
 
 				elif Step_Cam == 2:
 					t = 30
-					print_once_cam("Cam#2 - Stop recording in %d s.")
+					print_once_cam("Cam#2 - Stop recording in %d s." % t)
 					
 					if calc_delta_t(elapsed_time_pir, t, "Cam", "- Stop recording in"):
 						Step_Cam = 0
