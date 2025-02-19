@@ -19,11 +19,10 @@ warnings.filterwarnings("ignore")
 conf = json.load(open(args["conf"]))
 
 # initialize the camera and grab a reference to the raw camera capture
-from pprint import *
 cam = Picamera2()
+#from pprint import *
 #pprint(cam.sensor_modes)
 
-#exit
 height =480
 width=640
 config = cam.create_video_configuration(main={"format": 'XRGB8888',
@@ -41,7 +40,6 @@ cam.start()
 # allow the camera to warmup, then initialize the average frame, last
 # uploaded timestamp, and frame motion counter
 print("[INFO] warming up...")
-#print(conf["camera_warmup_time"])
 time.sleep(conf["camera_warmup_time"])
 
 avg = None
