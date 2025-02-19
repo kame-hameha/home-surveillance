@@ -14,22 +14,15 @@ ap.add_argument("-c", "--conf", required=True,
     help="path to the JSON configuration file")
 args = vars(ap.parse_args())
 
-# filter warnings, load the configuration and initialize the Dropbox
-# client
+# filter warnings, load the configuration
 warnings.filterwarnings("ignore")
 conf = json.load(open(args["conf"]))
-#client = None
-
-'''# check to see if the Dropbox should be used
-if conf["use_dropbox"]:
-    # connect to dropbox and start the session authorization process
-    client = dropbox.Dropbox(conf["dropbox_access_token"])
-    print("[SUCCESS] dropbox account linked")'''
 
 # initialize the camera and grab a reference to the raw camera capture
 from pprint import *
 cam = Picamera2()
-#pprint(camera.sensor_modes)
+#pprint(cam.sensor_modes)
+
 #exit
 height =480
 width=640
@@ -59,10 +52,6 @@ motionCounter = 0
 while True:
     time.sleep(1)
     frame = cam.capture_array()
-    
-    #cv2.imshow('f', frame)
-    #cv2.waitKey(1)
-    #print(frame.shape)
     
     # the timestamp and occupied/unoccupied text
     timestamp = datetime.datetime.now()
@@ -99,17 +88,10 @@ while True:
     cnts, _ = cv2.findContours(thresh.copy(), cv2.RETR_EXTERNAL, 
                             cv2.CHAIN_APPROX_SIMPLE)
     #cnts = imutils.grab_contours(cnts) # TODO
-    #print("min_area", conf["min_area"])
-    #print("cnts", cnts)
-    #i = 0
 
     # loop over the contours
     for c in cnts:
-        #print(i) 
-        #i+=1
-        #print("c", c)
-        
-        print("c in pixel %d" % cv2.contourArea(c))
+        #print("c in pixel %d" % cv2.contourArea(c))
 
         # if the contour is too small, ignore it
         if cv2.contourArea(c) < conf["min_area"]:
